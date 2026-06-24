@@ -81,13 +81,7 @@ class SbtRunnerBuildService(
      */
     private fun getApplyCommand(sbtVersion: SBTVersion): String {
         val patch = getSbtLoggerPatch(sbtVersion)
-        val pathToPlugin = File(
-            autoInstallSbtFolder +
-                File.separator +
-                getPatchFolder(patch) +
-                File.separator +
-                patch.jarName,
-        ).absolutePath
+        val pathToPlugin = File("$autoInstallSbtFolder/${getPatchFolder(patch)}/${patch.jarName}").absolutePath
         return "apply -cp \"${pathToPlugin.replace('\\', '/')}\" $SBT_PATCH_CLASS_NAME"
     }
 
@@ -105,7 +99,7 @@ class SbtRunnerBuildService(
         }
 
     private val autoInstallSbtFolder: String
-        get() = agentTempDirectory.toString() + File.separator + SBT_AUTO_HOME_FOLDER
+        get() = "$agentTempDirectory/$SBT_AUTO_HOME_FOLDER"
 
     private fun copyResources(sourcePathInJar: String, sourceName: String, destinationDir: File) {
         destinationDir.mkdirs()
@@ -127,7 +121,7 @@ class SbtRunnerBuildService(
             copyResources(
                 "/$SBT_DISTRIB/",
                 SBT_LAUNCHER_JAR_NAME,
-                File(autoInstallSbtFolder + File.separator + "bin"),
+                File("$autoInstallSbtFolder/bin"),
             )
             logger.message("SBT home set to: $sbtHome")
             mainClassName
@@ -149,7 +143,7 @@ class SbtRunnerBuildService(
         try {
             logger.activityStarted(SBT_TEAMCITY_LOGGER_INSTALLATION, BUILD_ACTIVITY_TYPE)
             val patch = getSbtLoggerPatch(sbtVersion)
-            val to = autoInstallSbtFolder + File.separator + getPatchFolder(patch)
+            val to = "$autoInstallSbtFolder/${getPatchFolder(patch)}"
             val from = "/$SBT_DISTRIB/${patch.folderName}/"
             logger.message(String.format("SBT logger %s will be installed from %s to %s", patch.jarName, from, to))
             copyResources(from, patch.jarName, File(to))
@@ -168,7 +162,7 @@ class SbtRunnerBuildService(
      * it visible in build logs which binary-compatible logger was selected.
      */
     private fun getPatchFolder(patch: SbtLoggerPatch): String =
-        SBT_PATCH_FOLDER_NAME + File.separator + patch.folderName
+        "$SBT_PATCH_FOLDER_NAME/${patch.folderName}"
 
     @get:Throws(RunBuildException::class)
     private val mainClassName: String
@@ -253,7 +247,7 @@ class SbtRunnerBuildService(
             logger.message("File name: $name; content: $content")
             logger.activityFinished("Prepare SBT run", BUILD_ACTIVITY_TYPE)
             FileUtil.writeFile(file, content, "UTF-8")
-            val fileNameQuotes = if (File.separatorChar == '\\') "\"\"" else "\""
+            val fileNameQuotes = if (isWindows()) "\"\"" else "\""
             listOf(String.format(RUN_INFILE_COMMANDS_FORMATTER, fileNameQuotes + name.replace('\\', '/') + fileNameQuotes))
         } catch (e: IOException) {
             LOG.warn(e.message, e)
@@ -284,7 +278,7 @@ class SbtRunnerBuildService(
         if (environmentVariables.containsKey(XDG_RUNTIME_DIR)) {
             return
         }
-        if (File.separatorChar == '\\' || buildTempDirectory.absolutePath.length <= MAX_ALLOWED_TMP_DIR_LENGTH) {
+        if (isWindows() || buildTempDirectory.absolutePath.length <= MAX_ALLOWED_TMP_DIR_LENGTH) {
             return
         }
 
@@ -310,6 +304,9 @@ class SbtRunnerBuildService(
         envVars.asSequence()
             .mapNotNull(System::getenv)
             .firstOrNull(String::isNotBlank)
+
+    private fun isWindows(): Boolean =
+        System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
 
     companion object {
         private val LOG = Logger.getLogger(SbtRunnerBuildServiceFactory::class.java.name)
