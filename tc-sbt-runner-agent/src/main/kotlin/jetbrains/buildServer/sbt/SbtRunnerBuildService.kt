@@ -1,13 +1,7 @@
 package jetbrains.buildServer.sbt
 
 import jetbrains.buildServer.RunBuildException
-import jetbrains.buildServer.agent.runner.BuildServiceAdapter
-import jetbrains.buildServer.agent.runner.CannotBuildCommandLineException
-import jetbrains.buildServer.agent.runner.JavaCommandLineBuilder
-import jetbrains.buildServer.agent.runner.JavaRunnerUtil
-import jetbrains.buildServer.agent.runner.ProcessListener
-import jetbrains.buildServer.agent.runner.ProcessListenerAdapter
-import jetbrains.buildServer.agent.runner.ProgramCommandLine
+import jetbrains.buildServer.agent.runner.*
 import jetbrains.buildServer.messages.ErrorData
 import jetbrains.buildServer.runner.JavaRunnerConstants
 import jetbrains.buildServer.util.FileUtil
@@ -23,11 +17,6 @@ class SbtRunnerBuildService(
     private val ivyCacheProvider: IvyCacheProvider,
 ) : BuildServiceAdapter() {
     private val filesToDelete = mutableListOf<File>()
-
-    enum class SBTVersion {
-        SBT_1_x,
-        SBT_0_13_x,
-    }
 
     override fun getListeners(): List<ProcessListener> = listOf(
         object : ProcessListenerAdapter() {
@@ -55,7 +44,7 @@ class SbtRunnerBuildService(
         val mainClassName = if (isAutoInstallMode()) installSbt() else mainClassName
         val sbtVersion = SbtVersionDetector.discoverSbtVersion(workingDirectory, sbtLauncher, jvmArgs, logger)
 
-        copySbtTcLogger(sbtVersion)
+        copySbtLoggerToTempSbtHome(sbtVersion)
 
         val javaHome = javaHome
         val sbtHome = sbtHome
@@ -84,13 +73,20 @@ class SbtRunnerBuildService(
         return buildCommandline(cliBuilder)
     }
 
+    /**
+     * Builds the sbt command that loads the TeamCity logger from the copied agent-side patch jar.
+     *
+     * The logger is injected with sbt's `apply -cp`.
+     * It must be prepended to the user's command file without requiring changes in the user's sbt project
+     */
     private fun getApplyCommand(sbtVersion: SBTVersion): String {
+        val patch = getSbtLoggerPatch(sbtVersion)
         val pathToPlugin = File(
             autoInstallSbtFolder +
                 File.separator +
-                getPatchFolder(sbtVersion) +
+                getPatchFolder(patch) +
                 File.separator +
-                SBT_PATCH_JAR_NAME,
+                patch.jarName,
         ).absolutePath
         return "apply -cp \"${pathToPlugin.replace('\\', '/')}\" $SBT_PATCH_CLASS_NAME"
     }
@@ -142,13 +138,21 @@ class SbtRunnerBuildService(
             logger.activityFinished(SBT_INSTALLATION_STEP_NAME, BUILD_ACTIVITY_TYPE)
         }
 
-    private fun copySbtTcLogger(sbtVersion: SBTVersion) {
+    /**
+     * Copies the bundled TeamCity logger jar that matches the detected sbt runtime into the temporary sbt home.
+     *
+     * The agent packages separate logger jars for sbt 0.13 and sbt 1.x because PR 27 publishes the logger with
+     * Scala/sbt binary suffixes. Copying only the matching jar keeps the generated `apply -cp` path explicit and
+     * puts the logger next to the temporary sbt installation that will execute the user's commands.
+     */
+    private fun copySbtLoggerToTempSbtHome(sbtVersion: SBTVersion) {
         try {
             logger.activityStarted(SBT_TEAMCITY_LOGGER_INSTALLATION, BUILD_ACTIVITY_TYPE)
-            val to = autoInstallSbtFolder + File.separator + getPatchFolder(sbtVersion)
-            val from = "/$SBT_DISTRIB/" + if (sbtVersion == SBTVersion.SBT_1_x) "$SBT_1_0_PATCH_FOLDER_NAME/" else ""
-            logger.message(String.format("SBT logger %s will be installed from %s to %s", SBT_PATCH_JAR_NAME, from, to))
-            copyResources(from, SBT_PATCH_JAR_NAME, File(to))
+            val patch = getSbtLoggerPatch(sbtVersion)
+            val to = autoInstallSbtFolder + File.separator + getPatchFolder(patch)
+            val from = "/$SBT_DISTRIB/${patch.folderName}/"
+            logger.message(String.format("SBT logger %s will be installed from %s to %s", patch.jarName, from, to))
+            copyResources(from, patch.jarName, File(to))
         } catch (e: Exception) {
             logger.internalError(ErrorData.PREPARATION_FAILURE_TYPE, "An error occurred during SBT installation", e)
             throw IllegalStateException(e)
@@ -157,12 +161,14 @@ class SbtRunnerBuildService(
         }
     }
 
-    private fun getPatchFolder(sbtVersion: SBTVersion): String =
-        if (sbtVersion == SBTVersion.SBT_1_x) {
-            SBT_PATCH_FOLDER_NAME + File.separator + SBT_1_0_PATCH_FOLDER_NAME
-        } else {
-            SBT_PATCH_FOLDER_NAME
-        }
+    /**
+     * Returns the relative folder under the temporary sbt home where the selected logger jar is installed.
+     *
+     * Keeping the sbt-line folder (`0.13` or `1.0`) in the runtime path mirrors the packaged resources and makes
+     * it visible in build logs which binary-compatible logger was selected.
+     */
+    private fun getPatchFolder(patch: SbtLoggerPatch): String =
+        SBT_PATCH_FOLDER_NAME + File.separator + patch.folderName
 
     @get:Throws(RunBuildException::class)
     private val mainClassName: String
@@ -309,9 +315,7 @@ class SbtRunnerBuildService(
         private val LOG = Logger.getLogger(SbtRunnerBuildServiceFactory::class.java.name)
 
         private const val SBT_LAUNCHER_JAR_NAME = "sbt-launch.jar"
-        private const val SBT_PATCH_JAR_NAME = "sbt-teamcity-logger.jar"
         private const val SBT_PATCH_FOLDER_NAME = "tc_plugin"
-        private const val SBT_1_0_PATCH_FOLDER_NAME = "1.0"
         private const val SBT_DISTRIB = "sbt-distrib"
         private const val SBT_AUTO_HOME_FOLDER = "agent-sbt"
         private const val RUN_INFILE_COMMANDS_FORMATTER = "< %s"
@@ -340,5 +344,34 @@ class SbtRunnerBuildService(
 
         @JvmStatic
         fun prepareArgs(args: String): String = SbtCommandFileContentBuilder.prepareArgs(args)
+
+        //TODO: rename to SbtMajorVersion as it reflects only major 0.13.x / 1.x versions
+        enum class SBTVersion {
+            SBT_1_x,
+            SBT_0_13_x,
+        }
+
+        /**
+         * Describes the logger artifact layout bundled into the agent plugin for one supported sbt mmajor version.
+         *
+         * @property folderName Resource folder under `sbt-distrib` and runtime patch folder under `tc_plugin`.
+         * For example, `0.13` maps to `sbt-distrib/0.13` and `tc_plugin/0.13`.
+         * @property jarName Logger jar file copied from the bundled resources into the runtime patch folder.
+         * For example, `sbt-teamcity-logger_2.12_1.0.jar` is used for sbt 1.x.
+         */
+        data class SbtLoggerPatch(
+            val folderName: String,
+            val jarName: String,
+        )
+
+        /**
+         * Maps a detected sbt runtime line to the matching logger artifact bundled into the agent plugin.
+         */
+        @JvmStatic
+        fun getSbtLoggerPatch(sbtVersion: SBTVersion): SbtLoggerPatch =
+            when (sbtVersion) {
+                SBTVersion.SBT_0_13_x -> SbtLoggerPatch("0.13", "sbt-teamcity-logger_2.10_0.13.jar")
+                SBTVersion.SBT_1_x -> SbtLoggerPatch("1.0", "sbt-teamcity-logger_2.12_1.0.jar")
+            }
     }
 }

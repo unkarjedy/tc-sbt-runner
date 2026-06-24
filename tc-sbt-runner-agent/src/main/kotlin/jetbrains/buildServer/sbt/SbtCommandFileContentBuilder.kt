@@ -12,7 +12,7 @@ object SbtCommandFileContentBuilder {
      *
      * Example:
      * ```
-     * ; apply -cp "/agent temp/tc_plugin/sbt-teamcity-logger.jar" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger ; sbt-teamcity-logger
+     * ; apply -cp "/agent temp/tc_plugin/1.0/sbt-teamcity-logger_2.12_1.0.jar" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger ; sbt-teamcity-logger
      * ; clean
      * ; testOnly example.Test -- -t "specific test"
      * ```

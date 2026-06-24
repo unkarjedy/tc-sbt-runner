@@ -83,8 +83,8 @@
                             <artifactItems>
                                 <artifactItem>
                                     <groupId>org.jetbrains.teamcity.plugins.sbt</groupId>
-                                    <artifactId>sbt-teamcity-logger</artifactId>
-                                    <version>1.0</version>
+                                    <artifactId>sbt-teamcity-logger_2.12_1.0</artifactId>
+                                    <version>${sbt.teamcity.logger.version}</version>
                                 </artifactItem>
                             </artifactItems>
                             <stripVersion>true</stripVersion>
@@ -97,12 +97,12 @@
                             <goal>copy</goal>
                         </goals>
                         <configuration>
-                            <outputDirectory>${build.outputDirectory}/sbt-distrib</outputDirectory>
+                            <outputDirectory>${build.outputDirectory}/sbt-distrib/0.13</outputDirectory>
                             <artifactItems>
                                 <artifactItem>
                                     <groupId>org.jetbrains.teamcity.plugins.sbt</groupId>
-                                    <artifactId>sbt-teamcity-logger</artifactId>
-                                    <version>0.13</version>
+                                    <artifactId>sbt-teamcity-logger_2.10_0.13</artifactId>
+                                    <version>${sbt.teamcity.logger.version}</version>
                                 </artifactItem>
                             </artifactItems>
                             <stripVersion>true</stripVersion>

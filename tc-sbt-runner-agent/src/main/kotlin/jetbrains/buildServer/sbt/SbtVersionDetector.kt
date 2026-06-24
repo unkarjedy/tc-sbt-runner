@@ -1,6 +1,7 @@
 package jetbrains.buildServer.sbt
 
 import jetbrains.buildServer.agent.BuildProgressLogger
+import jetbrains.buildServer.sbt.SbtRunnerBuildService.Companion.SBTVersion
 import jetbrains.buildServer.util.FileUtil
 import jetbrains.buildServer.util.PropertiesUtil
 import jetbrains.buildServer.util.StringUtil
@@ -29,7 +30,7 @@ object SbtVersionDetector {
         sbtLauncher: File,
         jvmArgs: List<String>,
         logger: BuildProgressLogger,
-    ): SbtRunnerBuildService.SBTVersion {
+    ): SBTVersion {
         logger.activityStarted(SBT_VERSION_DISCOVERY_STEP_NAME, SbtRunnerBuildService.BUILD_ACTIVITY_TYPE)
 
         logger.message("Will read SBT version from project/build.properties file")
@@ -50,7 +51,7 @@ object SbtVersionDetector {
         if (version == null) {
             logger.message("SBT version was not found")
         }
-        val sbtVersion = getVersionFromString(version) ?: SbtRunnerBuildService.SBTVersion.SBT_0_13_x
+        val sbtVersion = getVersionFromString(version) ?: SBTVersion.SBT_0_13_x
 
         logger.message("Will use teamcity-sbt-logger for SBT version: $sbtVersion")
         logger.activityFinished(SBT_VERSION_DISCOVERY_STEP_NAME, SbtRunnerBuildService.BUILD_ACTIVITY_TYPE)
@@ -66,14 +67,14 @@ object SbtVersionDetector {
             ?.group(1)
             ?.trim()
 
-    private fun getVersionFromString(version: String?): SbtRunnerBuildService.SBTVersion? {
+    private fun getVersionFromString(version: String?): SBTVersion? {
         if (StringUtil.isEmpty(version)) {
             return null
         }
         return if (version!!.trim().startsWith("1.")) {
-            SbtRunnerBuildService.SBTVersion.SBT_1_x
+            SBTVersion.SBT_1_x
         } else {
-            SbtRunnerBuildService.SBTVersion.SBT_0_13_x
+            SBTVersion.SBT_0_13_x
         }
     }
 

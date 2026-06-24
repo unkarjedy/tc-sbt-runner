@@ -8,4 +8,7 @@ resolvers += "Typesafe repository" at "http://repo.typesafe.com/typesafe/release
 
 resolvers += "Typesafe repository mwn" at "http://repo.typesafe.com/typesafe/maven-releases/"
 
-addSbtPlugin("org.jetbrains" % "sbt-teamcity-logger" % "0.1.0-SNAPSHOT")
+resolvers += Resolver.mavenLocal
+
+// TODO: replace this temporary Maven-local sbt-tc-logger PR 27 version with the published release version.
+addSbtPlugin("org.jetbrains.teamcity.plugins.sbt" % "sbt-teamcity-logger" % "329645ca")

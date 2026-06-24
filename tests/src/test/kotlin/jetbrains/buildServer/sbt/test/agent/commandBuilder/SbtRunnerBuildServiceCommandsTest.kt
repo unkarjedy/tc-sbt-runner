@@ -2,6 +2,8 @@ package jetbrains.buildServer.sbt.test.agent.commandBuilder
 
 import jetbrains.buildServer.sbt.SbtCommandFileContentBuilder
 import jetbrains.buildServer.sbt.SbtRunnerBuildService
+import jetbrains.buildServer.sbt.SbtRunnerBuildService.Companion.SBTVersion
+import jetbrains.buildServer.sbt.SbtRunnerBuildService.Companion.SbtLoggerPatch
 import org.testng.Assert
 import org.testng.annotations.Test
 
@@ -140,7 +142,7 @@ class SbtRunnerBuildServiceCommandsTest {
         val actual = SbtCommandFileContentBuilder.build(
             sbtCommands = "clean \"testOnly example.Test -- -t \\\"specific test\\\"\"",
             prologueCommands = listOf(
-                """apply -cp "/agent temp/tc_plugin/sbt-teamcity-logger.jar" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger""",
+                """apply -cp "/agent temp/tc_plugin/1.0/sbt-teamcity-logger_2.12_1.0.jar" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger""",
                 "sbt-teamcity-logger",
             ),
         )
@@ -148,10 +150,26 @@ class SbtRunnerBuildServiceCommandsTest {
         Assert.assertEquals(
             actual,
             """
-            ; apply -cp "/agent temp/tc_plugin/sbt-teamcity-logger.jar" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger ; sbt-teamcity-logger
+            ; apply -cp "/agent temp/tc_plugin/1.0/sbt-teamcity-logger_2.12_1.0.jar" jetbrains.buildServer.sbtlogger.SbtTeamCityLogger ; sbt-teamcity-logger
             ; clean
             ; testOnly example.Test -- -t "specific test"
             """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun sbt_versions_map_to_major_sbt_version_logger_artifacts_0_13() {
+        Assert.assertEquals(
+            SbtRunnerBuildService.getSbtLoggerPatch(SBTVersion.SBT_0_13_x),
+            SbtLoggerPatch("0.13", "sbt-teamcity-logger_2.10_0.13.jar"),
+        )
+    }
+
+    @Test
+    fun sbt_versions_map_to_major_sbt_version_logger_artifacts_1_x() {
+        Assert.assertEquals(
+            SbtRunnerBuildService.getSbtLoggerPatch(SBTVersion.SBT_1_x),
+            SbtLoggerPatch("1.0", "sbt-teamcity-logger_2.12_1.0.jar"),
         )
     }
 
