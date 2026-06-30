@@ -81,8 +81,8 @@ class SbtRunnerBuildService(
      */
     private fun getApplyCommand(sbtVersion: SBTVersion): String {
         val patch = getSbtLoggerPatch(sbtVersion)
-        val pathToPlugin = File("$autoInstallSbtFolder/${getPatchFolder(patch)}/${patch.jarName}").absolutePath
-        return "apply -cp \"${pathToPlugin.replace('\\', '/')}\" $SBT_PATCH_CLASS_NAME"
+        val pathToPlugin = File(SbtRunnerCommandFileLayout.loggerDestinationPath(autoInstallSbtFolder, patch)).absolutePath
+        return SbtRunnerCommandFileLayout.buildSbtApplyCommandForLoggerPath(pathToPlugin)
     }
 
     private fun getCheckStatusCommand(): String = "sbt-teamcity-logger"
@@ -143,10 +143,16 @@ class SbtRunnerBuildService(
         try {
             logger.activityStarted(SBT_TEAMCITY_LOGGER_INSTALLATION, BUILD_ACTIVITY_TYPE)
             val patch = getSbtLoggerPatch(sbtVersion)
-            val to = "$autoInstallSbtFolder/${getPatchFolder(patch)}"
-            val from = "/$SBT_DISTRIB/${patch.folderName}/"
-            logger.message(String.format("SBT logger %s will be installed from %s to %s", patch.jarName, from, to))
-            copyResources(from, patch.jarName, File(to))
+            val installSpec = SbtRunnerCommandFileLayout.loggerInstallOperation(autoInstallSbtFolder, patch)
+            logger.message(
+                String.format(
+                    "SBT logger %s will be installed from %s to %s",
+                    installSpec.sourceName,
+                    installSpec.sourcePathInJar,
+                    installSpec.destinationDir,
+                ),
+            )
+            copyResources(installSpec.sourcePathInJar, installSpec.sourceName, File(installSpec.destinationDir))
         } catch (e: Exception) {
             logger.internalError(ErrorData.PREPARATION_FAILURE_TYPE, "An error occurred during SBT installation", e)
             throw IllegalStateException(e)
@@ -154,15 +160,6 @@ class SbtRunnerBuildService(
             logger.activityFinished(SBT_TEAMCITY_LOGGER_INSTALLATION, BUILD_ACTIVITY_TYPE)
         }
     }
-
-    /**
-     * Returns the relative folder under the temporary sbt home where the selected logger jar is installed.
-     *
-     * Keeping the sbt-line folder (`0.13` or `1.0`) in the runtime path mirrors the packaged resources and makes
-     * it visible in build logs which binary-compatible logger was selected.
-     */
-    private fun getPatchFolder(patch: SbtLoggerPatch): String =
-        "$SBT_PATCH_FOLDER_NAME/${patch.folderName}"
 
     @get:Throws(RunBuildException::class)
     private val mainClassName: String
@@ -247,8 +244,7 @@ class SbtRunnerBuildService(
             logger.message("File name: $name; content: $content")
             logger.activityFinished("Prepare SBT run", BUILD_ACTIVITY_TYPE)
             FileUtil.writeFile(file, content, "UTF-8")
-            val fileNameQuotes = if (isWindows()) "\"\"" else "\""
-            listOf(String.format(RUN_INFILE_COMMANDS_FORMATTER, fileNameQuotes + name.replace('\\', '/') + fileNameQuotes))
+            listOf(SbtRunnerCommandFileLayout.buildSbtInputRedirectionArgument(name, isWindows()))
         } catch (e: IOException) {
             LOG.warn(e.message, e)
             emptyList()
@@ -312,10 +308,8 @@ class SbtRunnerBuildService(
         private val LOG = Logger.getLogger(SbtRunnerBuildServiceFactory::class.java.name)
 
         private const val SBT_LAUNCHER_JAR_NAME = "sbt-launch.jar"
-        private const val SBT_PATCH_FOLDER_NAME = "tc_plugin"
         private const val SBT_DISTRIB = "sbt-distrib"
         private const val SBT_AUTO_HOME_FOLDER = "agent-sbt"
-        private const val RUN_INFILE_COMMANDS_FORMATTER = "< %s"
         private const val SBT_INSTALLATION_STEP_NAME = "SBT installation"
         private const val SBT_TEAMCITY_LOGGER_INSTALLATION = "SBT TeamCity logger installation"
         private const val PATH = "PATH"
@@ -336,8 +330,6 @@ class SbtRunnerBuildService(
             "^(##teamcity\\[compilationStarted|testSuiteStarted|testStarted)",
             Pattern.CASE_INSENSITIVE + Pattern.MULTILINE,
         )
-
-        private const val SBT_PATCH_CLASS_NAME = "jetbrains.buildServer.sbtlogger.SbtTeamCityLogger"
 
         @JvmStatic
         fun prepareArgs(args: String): String = SbtCommandFileContentBuilder.prepareArgs(args)
