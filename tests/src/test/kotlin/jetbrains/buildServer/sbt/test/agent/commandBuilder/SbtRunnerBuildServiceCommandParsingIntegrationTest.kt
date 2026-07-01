@@ -18,6 +18,11 @@ import java.io.File
  *
  * Add cases here when the generated file needs to be checked against real sbt behavior.
  *
+ * ATTENTION:
+ *  - This test is NOT about executing the full [jetbrains.buildServer.agent.runner.ProgramCommandLine]
+ *    [jetbrains.buildServer.sbt.SbtRunnerBuildService.makeProgramCommandLine].
+ *  - This test is about sbt command text semantics: quotes, whitespace, semicolon chains, and the generated command-file content.
+ *
  * @see SbtRunnerBuildServiceCommandsTest
  */
 class SbtRunnerBuildServiceCommandParsingIntegrationTest {
